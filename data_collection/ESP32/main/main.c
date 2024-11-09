@@ -6,7 +6,7 @@
 #include "../managed_components/espressif__mpu6050/include/mpu6050.h"
 
 #define DELAY_BETWEEN_SAMPLE_MS 2 // 500 hz
-#define NUM_SAMPLES 1000
+#define NUM_SAMPLES 500
 #define UART_PORT UART_NUM_0
 
 void i2c_init()
@@ -14,8 +14,8 @@ void i2c_init()
     // intiialize I2C
     i2c_config_t conf = {
         .mode = I2C_MODE_MASTER,
-        .sda_io_num = GPIO_NUM_0,
-        .scl_io_num = GPIO_NUM_1,
+        .sda_io_num = GPIO_NUM_13,
+        .scl_io_num = GPIO_NUM_14,
         .sda_pullup_en = GPIO_PULLUP_ENABLE,
         .scl_pullup_en = GPIO_PULLUP_ENABLE,
         .master.clk_speed = 400000,
@@ -92,21 +92,24 @@ void app_main(void)
     {
         vTaskDelay(50 / portTICK_PERIOD_MS); // appease watchdog
         const uart_port_t uart_num = UART_PORT;
-        int length = 0;
-        ESP_ERROR_CHECK(uart_get_buffered_data_len(uart_num, (size_t*)&length));
+        size_t length = 0;
+        ESP_ERROR_CHECK(uart_get_buffered_data_len(uart_num, &length));
+        
         if(length == 0) continue;
-
         uart_flush_input(uart_num);
+        
+        printf("y\n");
 
+        long long int h = esp_timer_get_time();
         for(int i = 0; i < NUM_SAMPLES; i++)
         {   
             samples[i].time = (unsigned long)esp_timer_get_time();
             mpu6050_get_acce(imu, (mpu6050_acce_value_t*) &samples[i]);
             mpu6050_get_gyro(imu, (mpu6050_gyro_value_t*) &samples[i].g_x);
             unsigned long t = esp_timer_get_time();
-            while(esp_timer_get_time() - t < 800); // delay 2 ms = 500 hz sampling rate, takes about .8 ms to get data from IMU
+            while(esp_timer_get_time() - t < 2725); // takes about .8 ms to get data from IMU
         }
-
+        
         printf("acc_x,acc_y,acc_z,gyro_x,gyro_y,gyro_z,time\n");
         
         for(int i = 0; i < NUM_SAMPLES; i++)

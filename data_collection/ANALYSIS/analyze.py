@@ -4,8 +4,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 import serial
-from time import sleep
-
+from time import sleep, time
+import os
 
 HELLO = """
                                                                      .-'''-.           
@@ -77,9 +77,9 @@ def plot_data(dataframe, filename):
     fig.subplots_adjust(hspace=0.3)
 
     acc_plot = fig.add_subplot(221)
-    acc_plot.plot(df["time"], df["acc_x"], label="acc_x")
-    acc_plot.plot(df["time"], df["acc_y"], label="acc_y")
-    acc_plot.plot(df["time"], df["acc_z"], label="acc_z")
+    acc_plot.plot(df["time"], df["acc_x"]*9.82, label="acc_x")
+    acc_plot.plot(df["time"], df["acc_y"]*9.82, label="acc_y")
+    acc_plot.plot(df["time"], df["acc_z"]*9.82, label="acc_z")
     acc_plot.title.set_text("Acceleration vs Time")
     acc_plot.set(xlabel="Time (seconds)", ylabel=r"Acceleration ($m/s^{2}$)")
     acc_plot.set_xlim(xmin=0)
@@ -102,9 +102,6 @@ def plot_data(dataframe, filename):
     acc_x_fft = 2.0 / num_samples * np.abs(fft(df["acc_x"])[0 : num_samples // 2])
     acc_y_fft = 2.0 / num_samples * np.abs(fft(df["acc_y"])[0 : num_samples // 2])
     acc_z_fft = 2.0 / num_samples * np.abs(fft(df["acc_z"])[0 : num_samples // 2])
-
-    for i in fft(df["acc_x"])[0 : num_samples // 2]:
-        print(i)
 
     acc_fft_plot = fig.add_subplot(223)
     acc_fft_plot.plot(fft_freqs, acc_x_fft, label="acc_x fft")
@@ -166,14 +163,26 @@ if __name__ == "__main__":
         port = input("Enter the UART port (COM?): ")
         ser = serial.Serial(port=port, baudrate=115200)
         ser.set_output_flow_control(False)
+        ser.reset_input_buffer()
         ser.setRTS(False)
         ser.close()
         ser.open()
 
         while True:
-            file_name = input(
-                "Enter a filename to save readings into (if file exists it will be overwritten): "
-            )
+            movement_class = input("Enter movement type: ").lower()
+
+            data_file_names = [
+                os.path.splitext(entry)[0]
+                for entry in os.listdir("./data/")
+                if os.path.isfile(f"./data/{entry}")
+            ]
+            movement_class_files = [file for file in data_file_names if file.startswith(movement_class)] or [
+                "_-1"
+            ]
+            movement_class_numbers = [int(file[file.rindex("_") + 1 :]) for file in movement_class_files]
+            new_file_number = max(movement_class_numbers) + 1
+            file_name = f"./data/{movement_class}_{new_file_number}.csv"
+
             with open(file_name, "w+") as f:
                 print("\nIMU will begin recording data in 3 seconds", end="", flush=True)
                 sleep(1)
@@ -181,22 +190,30 @@ if __name__ == "__main__":
                 sleep(1)
                 print("\rIMU will begin recording data in 1 seconds", end="", flush=True)
                 sleep(1)
-                print("\rDATA RECORDING IN PROGRESS" + " " * 100, end="", flush=True)
 
+                ser.reset_input_buffer()
                 ser.write([0xFF])  # trigger IMU recording for 2 seconds
                 data = ""
+
+                line = ser.readline().decode("ascii").strip()
+                print("\rDATA RECORDING IN PROGRESS" + " " * 100, flush=True)
+
+                for i in range(3):
+                    print(i)
+                    sleep(1)
 
                 while True:
                     line = ser.readline().decode("ascii").strip()
 
                     if line == "$":  # recieved end of transmission
+                        ser.reset_input_buffer()
                         break
 
                     if data:
                         data += line + "\n"
                     elif "acc_x,acc_y,acc_z,gyro_x,gyro_y,gyro_z,time" in line:
-                        data += line[line.index("acc_x,acc_y,acc_z,gyro_x,gyro_y,gyro_z,time") :] + "\n"
                         print("\rDATA RECORDING FINISHED. SAVING TO FILE." + " " * 100, end="", flush=True)
+                        data += line[line.index("acc_x,acc_y,acc_z,gyro_x,gyro_y,gyro_z,time"):] + "\n"
 
                 f.write(data)
                 sleep(1.5)
