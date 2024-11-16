@@ -1,4 +1,5 @@
 from scipy.fft import fft, fftfreq
+from scipy.signal import spectrogram
 from io import StringIO
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -58,6 +59,7 @@ def get_data(file_path):
 
 def plot_data(dataframe, filename):
     shift_z = ""
+    spectogram = ""
     yes = ["yes", "y"]
     no = ["no", "n"]
     while shift_z not in yes and shift_z not in no:
@@ -66,10 +68,14 @@ def plot_data(dataframe, filename):
         )
         shift_z = shift_z.lower()
 
+    while spectogram not in yes and spectogram not in no:
+        spectogram = input("Do you want to plot a spectogram? [Y/N]: ").lower()
+
     df = dataframe
 
-    if shift_z:
+    if shift_z in yes:
         df["acc_z"] -= sum(df["acc_z"]) / len(df["acc_z"])
+    shift_z = None
 
     fig = plt.figure()
 
@@ -77,9 +83,9 @@ def plot_data(dataframe, filename):
     fig.subplots_adjust(hspace=0.3)
 
     acc_plot = fig.add_subplot(221)
-    acc_plot.plot(df["time"], df["acc_x"]*9.82, label="acc_x")
-    acc_plot.plot(df["time"], df["acc_y"]*9.82, label="acc_y")
-    acc_plot.plot(df["time"], df["acc_z"]*9.82, label="acc_z")
+    acc_plot.plot(df["time"], df["acc_x"] * 9.8, label="acc_x")
+    acc_plot.plot(df["time"], df["acc_y"] * 9.8, label="acc_y")
+    acc_plot.plot(df["time"], df["acc_z"] * 9.8, label="acc_z")
     acc_plot.title.set_text("Acceleration vs Time")
     acc_plot.set(xlabel="Time (seconds)", ylabel=r"Acceleration ($m/s^{2}$)")
     acc_plot.set_xlim(xmin=0)
@@ -99,6 +105,7 @@ def plot_data(dataframe, filename):
     num_samples = len(df["acc_x"])
 
     fft_freqs = fftfreq(num_samples, sample_spacing)[: num_samples // 2]
+
     acc_x_fft = 2.0 / num_samples * np.abs(fft(df["acc_x"])[0 : num_samples // 2])
     acc_y_fft = 2.0 / num_samples * np.abs(fft(df["acc_y"])[0 : num_samples // 2])
     acc_z_fft = 2.0 / num_samples * np.abs(fft(df["acc_z"])[0 : num_samples // 2])
@@ -125,8 +132,70 @@ def plot_data(dataframe, filename):
     gyro_fft_plot.set_xlim(xmin=-1)
     gyro_fft_plot.legend()
 
-    plt.show()
+    fig.show()
 
+    if spectogram in yes:
+        fig2 = plt.figure()
+        fig2.suptitle(f"{filename} spectograms", fontsize=16)
+        fig2.subplots_adjust(hspace=0.3)
+
+        a_x = fig2.add_subplot(231)
+        a_y = fig2.add_subplot(232)
+        a_z = fig2.add_subplot(233)
+        g_x = fig2.add_subplot(234)
+        g_y = fig2.add_subplot(235)
+        g_z = fig2.add_subplot(236)
+
+        fs = 250
+        noverlap = 149
+        nperseg = 150
+        color = "auto"
+
+        a_x_freqs, a_x_times, a_x_magnitudes = spectrogram(
+            x=df["acc_x"], fs=fs, noverlap=noverlap, nperseg=nperseg
+        )
+        fig2.colorbar(a_x.pcolormesh(a_x_times, a_x_freqs, a_x_magnitudes, shading=color))
+        a_x.set_title("Accel X")
+        a_x.set_ylim(0, 25)
+
+        a_y_freqs, a_y_times, a_y_magnitudes = spectrogram(
+            x=df["acc_y"], fs=fs, noverlap=noverlap, nperseg=nperseg
+        )
+        fig2.colorbar(a_y.pcolormesh(a_y_times, a_y_freqs, a_y_magnitudes, shading=color))
+        a_y.set_title("Accel Y")
+        a_y.set_ylim(0, 25)
+
+        a_z_freqs, a_z_times, a_z_magnitudes = spectrogram(
+            x=df["acc_z"], fs=fs, noverlap=noverlap, nperseg=nperseg
+        )
+        fig2.colorbar(a_z.pcolormesh(a_z_times, a_z_freqs, a_z_magnitudes, shading=color))
+        a_z.set_title("Accel Z")
+        a_z.set_ylim(0, 25)
+
+        g_x_freqs, g_x_times, g_x_magnitudes = spectrogram(
+            x=df["gyro_x"], fs=fs, noverlap=noverlap, nperseg=nperseg
+        )
+        fig2.colorbar(g_x.pcolormesh(g_x_times, g_x_freqs, g_x_magnitudes, shading=color))
+        g_x.set_title("Gyro X")
+        g_x.set_ylim(0, 25)
+
+        g_y_freqs, g_y_times, g_y_magnitudes = spectrogram(
+            x=df["gyro_y"], fs=fs, noverlap=noverlap, nperseg=nperseg
+        )
+        fig2.colorbar(g_y.pcolormesh(g_y_times, g_y_freqs, g_y_magnitudes, shading=color))
+        g_y.set_title("Gyro Y")
+        g_y.set_ylim(0, 25)
+
+        g_z_freqs, g_z_times, g_z_magnitudes = spectrogram(
+            x=df["gyro_z"], fs=fs, noverlap=noverlap, nperseg=nperseg
+        )
+        fig2.colorbar(g_z.pcolormesh(g_z_times, g_z_freqs, g_z_magnitudes, shading=color))
+        g_z.set_title("Gyro Z")
+        g_z.set_ylim(0, 25)
+
+        fig2.show()
+
+    plt.show()
     return df
 
 
@@ -181,7 +250,13 @@ if __name__ == "__main__":
             ]
             movement_class_numbers = [int(file[file.rindex("_") + 1 :]) for file in movement_class_files]
             new_file_number = max(movement_class_numbers) + 1
-            file_name = f"./data/{movement_class}_{new_file_number}.csv"
+
+            
+            file_suffix = input("Enter your initials: ")
+            if len(file_suffix) < 1 or len(file_suffix) > 2:
+                print("1 or 2 characters only: ")
+
+            file_name = f"./data/{movement_class}_{file_suffix}_{new_file_number}.csv"
 
             with open(file_name, "w+") as f:
                 print("\nIMU will begin recording data in 3 seconds", end="", flush=True)
@@ -213,7 +288,7 @@ if __name__ == "__main__":
                         data += line + "\n"
                     elif "acc_x,acc_y,acc_z,gyro_x,gyro_y,gyro_z,time" in line:
                         print("\rDATA RECORDING FINISHED. SAVING TO FILE." + " " * 100, end="", flush=True)
-                        data += line[line.index("acc_x,acc_y,acc_z,gyro_x,gyro_y,gyro_z,time"):] + "\n"
+                        data += line[line.index("acc_x,acc_y,acc_z,gyro_x,gyro_y,gyro_z,time") :] + "\n"
 
                 f.write(data)
                 sleep(1.5)

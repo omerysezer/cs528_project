@@ -112,10 +112,11 @@ void app_main(void)
         
         printf("acc_x,acc_y,acc_z,gyro_x,gyro_y,gyro_z,time\n");
         
+        unsigned long initial_timestamp = samples[0].time;
         for(int i = 0; i < NUM_SAMPLES; i++)
         {
             struct sample s = samples[i];
-            printf("%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%lu\n", s.a_x, s.a_y, s.a_z, s.g_x, s.g_y, s.g_z, s.time);
+            printf("%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%lu\n", s.a_x, s.a_y, s.a_z, s.g_x, s.g_y, s.g_z, s.time - initial_timestamp);
             vTaskDelay(1 / portTICK_PERIOD_MS);
         }
         
