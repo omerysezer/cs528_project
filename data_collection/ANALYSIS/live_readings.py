@@ -29,18 +29,42 @@ len(array) = 20_000
 start = 19999
 """
 import threading
-import serial
+import serial as ser
+import numpy as np
 
 class DroneFunctions(threading.Thread):
+
     def __init__(self):
         threading.Thread.__init__(self)
         self.ready_flag = False
+        self.end = 0
+        self.full_window = False
+        self.data_arr = np.array(20000, dtype=np.float64) # cyclic data buffer 
 
     def data_reader(self):
         while self.ready_flag is False:
             continue
 
+        ser.reset_input_buffer()
+        ser.write([0xFF])  # trigger IMU recording for 2 seconds
+        
+        line = ser.readline().decode("ascii").strip()
 
+        while "y" not in line:
+            line = ser.readline().decode("ascii").strip()
+
+        while True:
+            line = ser.readline().decode("ascii").strip()
+            values = line.split(",")
+            
+            for value in values:
+                self.data_arr[self.end] = value
+            
+            end+=6
+            if end > 2999:
+                self.full_window = True
+            
+                
 
 
     def drone_controller(self):
@@ -61,3 +85,4 @@ class DroneFunctions(threading.Thread):
 
 if __name__ == "__main__":
     pass
+
