@@ -31,6 +31,7 @@ start = 19999
 import threading
 import serial as ser
 import numpy as np
+import joblib
 
 class DroneFunctions(threading.Thread):
 
@@ -64,11 +65,27 @@ class DroneFunctions(threading.Thread):
             if end > 2999:
                 self.full_window = True
             
-                
-
-
     def drone_controller(self):
-        pass
+        last_motion = "nm"
+        motion_opposites = {"nm": None, "lflip": None, "rflip": None, "left": "right", "right": "left", "up": "down", "down": "up", "forward": "backward", "backward": "forward", "cw": "ccw", "ccw": "cw"} 
+
+        # load
+        clf = joblib.load("ENTER MODEL HERE")
+    # - establish drone communication
+        self.ready_flag = True
+
+        while True:
+            while not self.full_window:
+                continue
+
+            data = self.data_arr[self.end-2999:self.end]
+            motion = clf.predict(data)
+
+            if motion_opposites[motion] == last_motion:
+                last_motion = "nm"
+            else:
+                last_motion = motion
+        # - feed drone last_motion
 
     def run(self):
         reader = threading.Thread(self.data_reader)
@@ -84,5 +101,6 @@ class DroneFunctions(threading.Thread):
 
 
 if __name__ == "__main__":
-    pass
+    drone = DroneFunctions()
+    drone.run()
 
