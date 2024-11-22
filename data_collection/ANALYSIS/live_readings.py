@@ -28,14 +28,36 @@ Thread 2:
 len(array) = 20_000
 start = 19999
 """
+import threading
+import serial
+
+class DroneFunctions(threading.Thread):
+    def __init__(self):
+        threading.Thread.__init__(self)
+        self.ready_flag = False
+
+    def data_reader(self):
+        while self.ready_flag is False:
+            continue
+
+
+
+
+    def drone_controller(self):
+        pass
+
+    def run(self):
+        reader = threading.Thread(self.data_reader)
+        controller = threading.Thread(self.data_reader)
+
+        reader.start()
+        controller.start()
+
+        reader.join()
+        controller.join()
+
+
+
 
 if __name__ == "__main__":
-    pass
-
-
-def DataReader(ready_flag):
-    pass
-
-
-def DroneController(ready_flag):
     pass
