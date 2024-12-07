@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from sklearn.svm import SVC
+from sklearn.model_selection import GridSearchCV
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
 from sklearn.neighbors import KNeighborsClassifier
@@ -11,6 +12,7 @@ from sklearn.metrics import classification_report, accuracy_score, confusion_mat
 import joblib
 
 NUM_ITERATIONS = 15
+
 
 def get_data_files(data_directory):
     files = [
@@ -36,6 +38,7 @@ def get_data_files(data_directory):
         features[label].append(data.flatten())
 
     return features
+
 
 def split_test_train_data(features, train_percentage):
     train_features = []
@@ -72,8 +75,27 @@ def save_svm(svm_classifier, file_path):
     with open(file_path, "wb") as file:
         joblib.dump(svm_classifier, file)
 
-if __name__ == "__main__":        
+
+def train_and_save_svm(data):
+    train_data, train_labels, a, b = split_test_train_data(data, 1)
+    model = SVC(C=10, gamma=0.01, kernel="rbf", class_weight='balanced')
+    model.fit(train_data, train_labels)
+    
+    # model = KNeighborsClassifier(n_neighbors=5)
+    # model.fit(train_data, train_labels)
+    with open("motion_classifier.pkl", "wb") as file:
+        joblib.dump(model, file)
+
+
+def load_svm_from_file(file_path="./motion_classifier.pkl"):
+    with open(file_path, "rb") as file:
+        return joblib.load(file)
+
+if __name__ == "__main__":
+    # load_and_evaluate()
     data = get_data_files("data")
+    train_and_save_svm(data)
+    exit()
     num_classes = len(data.keys())
 
     X_train, Y_train, X_test, Y_test = split_test_train_data(data, 0.7)
