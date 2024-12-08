@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import classification_report, accuracy_score, confusion_matrix
+import joblib
 
 NUM_ITERATIONS = 15
 
@@ -52,82 +53,32 @@ def split_test_train_data(features, train_percentage):
 
     return train_features, train_labels, test_features, test_labels
 
-def train_and_evaluate_svm(X_train, y_train, X_test, y_test):
+def train_svm(X_train, Y_train):
     # Create the SVM classifier
     svm_classifier = SVC(kernel="rbf")
 
     # Train the classifier
-    svm_classifier.fit(X_train, y_train)
+    svm_classifier.fit(X_train, Y_train)
 
-    # Perform prediction on the test set
-    y_pred = svm_classifier.predict(X_test)
+    return svm_classifier
 
-    # Evaluate the model
-    accuracy = accuracy_score(y_test, y_pred)
-    print(f"SVM accuracy: {accuracy:.3%}")
-
-    # Plot the confusion matrix
-    labels = sorted(list(set(y_train + y_test)))
-    conf_matrix = confusion_matrix(y_test, y_pred, labels=labels)
+def evaluate_svm(svm_classifier: SVC, X_test, Y_test):
+    Y_pred = svm_classifier.predict(X_test)
+    accuracy = accuracy_score(Y_test, Y_pred)
+    conf_matrix = confusion_matrix(Y_test, Y_pred, labels=svm_classifier.classes_)
     return accuracy, conf_matrix
 
-def train_and_evaluate_svm_forest(data, num_models=5):
-    models = []
-    train_x, train_y, test_x, test_y = split_test_train_data(data, 0.7)
-    subset_size = int(0.7*len(train_x))
-    for _ in range(num_models):    
-        indices = random.sample(range(len(train_x)), subset_size)
-        model_x = [train_x[index] for index in indices]
-        model_y = [train_y[index] for index in indices]
-        model = SVC(kernel="rbf")
-        model.fit(model_x, model_y)
-        models.append(model)
-    
-    y_pred = []
-    for instance, label in zip(test_x, test_y):
-        counts = {}
-        for model in models:
-            label = model.predict(instance.reshape(1, -1))[0]
-            counts[label] = counts.get(label, 0) + 1
-        max_count = max(counts.values())
-        candidates = [word for word, count in counts.items() if count == max_count]
-        chosen_label = random.choice(candidates)
-        y_pred.append(chosen_label)
-    
-    accuracy = accuracy_score(test_y, y_pred)
-    print(f"SVM accuracy: {accuracy:.3%}")
-
-    # Plot the confusion matrix
-    labels = sorted(list(set(train_y + test_y)))
-    conf_matrix = confusion_matrix(test_y, y_pred, labels=labels)
-    return accuracy, conf_matrix
+def save_svm(svm_classifier, file_path):
+    with open(file_path, "wb") as file:
+        joblib.dump(svm_classifier, file)
 
 if __name__ == "__main__":        
     data = get_data_files("data")
     num_classes = len(data.keys())
-    avg_accuracy = 0
-    avg_conf_matrix = np.zeros(shape=(len(data.keys()), len(data.keys())))
-    labels = list(data.keys())
 
-    avg_accuracy, avg_conf_matrix = train_and_evaluate_svm_forest(data, 10)
-    # exit()
+    X_train, Y_train, X_test, Y_test = split_test_train_data(data, 0.7)
+    model = train_svm(X_train, Y_train)
 
-    # for _ in range(NUM_ITERATIONS):
-    #     split_data = split_test_train_data(data, 0.7)
-    #     acc, conf_matrix = train_and_evaluate_svm(*split_data)  
-    #     avg_accuracy += acc
-    #     avg_conf_matrix += conf_matrix
-    
-    # avg_conf_matrix /= NUM_ITERATIONS
-    # avg_accuracy /= NUM_ITERATIONS
-    print(f"Avg accuracy over {NUM_ITERATIONS} runs = {100*avg_accuracy:.3f}%")
-    ticks = [i + 0.5 for i in range(len(labels))]
-    sns.heatmap(avg_conf_matrix, annot=True, cmap="Blues")
-    plt.title("train")
-    plt.xlabel("pred")
-    plt.ylabel("actual")
-    plt.xticks(ticks, labels)
-    plt.yticks(ticks, labels)
-    plt.show()
+    accuracy, conf_matrix = evaluate_svm(model, X_test, Y_test)
 
-        
+    save_svm(model, "motion_classifier.mdl")
