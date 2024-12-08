@@ -24,21 +24,23 @@ def get_data(file_path):
 
         return df
 
+
 def get_input(input_request_str, input_validator=(lambda inpt: True)):
-    '''
+    """
     Will continually print the input_request string until input_validator(user_input) returns True
     Returns first user_input that satisfies input_validator
-    '''
-    while True: 
+    """
+    while True:
         inpt = input(input_request_str)
         if input_validator(inpt):
             return inpt
 
+
 def get_input_yes_no(input_request_str):
-    '''
+    """
     Will continually prompt the user for a YES/NO answer to the given input_request_str
     Will return True if the response is YES, False otherwise
-    '''
+    """
     is_yes = lambda inpt: inpt.lower() in ["yes", "y"]
     is_no = lambda inpt: inpt.lower() in ["no", "n"]
     validator = lambda inpt: is_yes(inpt) or is_no(inpt)
@@ -46,9 +48,11 @@ def get_input_yes_no(input_request_str):
     response = get_input(input_request_str, validator)
     return is_yes(response)
 
+
 def record_data():
-    valid_movements = ["up", "down", "left", "right", "forward", "backward", "lflip", "rflip", "cw", "ccw"]:
-    def movement_validator(movement): 
+    valid_movements = ["up", "down", "left", "right", "forward", "backward", "lflip", "rflip", "cw", "ccw"]
+
+    def movement_validator(movement):
         if movement.lower() in valid_movements:
             return True
         print("Invalid movment, enter one of: ", valid_movements)
@@ -60,6 +64,7 @@ def record_data():
             return True
         except ValueError:
             return False
+
     try:
         port = get_input("Enter the UART port (COM?): ")
 
@@ -71,11 +76,18 @@ def record_data():
         ser.open()
 
         while True:
-            loop_length = int(get_input("How many movements do you want to record? [Enter a number or 0 for infinite loop]: ", num_movement_validator))
+            loop_length = int(
+                get_input(
+                    "How many movements do you want to record? [Enter a number or 0 for infinite loop]: ",
+                    num_movement_validator,
+                )
+            )
             movement_class = get_input("Enter movement type: ", movement_validator).lower()
-            file_suffix = get_input("Enter your initials (1 or 2 characters only): ", lambda inpt: 0 < len(inpt) < 3)
+            file_suffix = get_input(
+                "Enter your initials (1 or 2 characters only): ", lambda inpt: 0 < len(inpt) < 3
+            )
 
-            loop_length = loop_length if loop_length > 0 else float('inf')
+            loop_length = loop_length if loop_length > 0 else float("inf")
 
             data_file_names = [
                 os.path.splitext(entry)[0]
@@ -87,9 +99,9 @@ def record_data():
             ]
             movement_class_numbers = [int(file[file.rindex("_") + 1 :]) for file in movement_class_files]
             num_files = max(movement_class_numbers) + 1
-            
+
             num_success_recordings = 0
-            while num_success_recordings < loop_length: 
+            while num_success_recordings < loop_length:
                 file_name = f"./data/{movement_class}_{file_suffix}_{num_files + num_success_recordings}.csv"
 
                 with open(file_name, "w+") as f:
@@ -121,39 +133,49 @@ def record_data():
                         if data:
                             data += line + "\n"
                         elif "acc_x,acc_y,acc_z,gyro_x,gyro_y,gyro_z,time" in line:
-                            print("\rDATA RECORDING FINISHED. SAVING TO FILE." + " " * 100, end="", flush=True)
+                            print(
+                                "\rDATA RECORDING FINISHED. SAVING TO FILE." + " " * 100, end="", flush=True
+                            )
                             data += line[line.index("acc_x,acc_y,acc_z,gyro_x,gyro_y,gyro_z,time") :] + "\n"
 
                     f.write(data)
-                    sleep(1.5)
                     print(f"\rDATA SAVED TO '{file_name}'" + " " * 100 + "\n", flush=True)
-                    sleep(2)
-                    analyze = get_input_yes_no("Analyze data now? [Y/N]: ")
-                    if analyze.lower() == "y" or analyze.lower() == "yes":
-                        plot_data(get_data(file_name), file_name)
-                    keep_recording = get_input_yes_no("Do you want to keep this recording? [Y/N]: ")
-                    if keep_recording:
-                        num_success_recordings += 1 
+
+                analyze = get_input_yes_no("Analyze data now? [Y/N]: ")
+                if analyze:
+                    plot_data(get_data(file_name), file_name)
+
+                keep_recording = get_input_yes_no("Do you want to keep this recording? [Y/N]: ")
+                if keep_recording:
+                    num_success_recordings += 1
+                else:
+                    os.remove(file_name)
     except KeyboardInterrupt:
         if ser:
             print("\rCLOSING PORT..." + " " * 100)
             ser.close()
         exit(0)
 
+
 def analyze_data():
     def path_is_valid(path):
         if not os.path.exists(path):
             print(f"{path} not found. ")
             return False
-        return True 
+        return True
 
-    while True:
-        file_path = get_input("Enter data file path: ", path_is_valid)
-        plot_data(get_data(file_path), file_path)
+    try:
+        while True:
+            file_path = get_input("Enter data file path: ", path_is_valid)
+            plot_data(get_data(file_path), file_path)
+    except KeyboardInterrupt:
+        exit(0)
 
 
 def plot_data(dataframe, filename):
-    shift_z = get_input_yes_no("Shift Z-axis down [z_signal will be z_signal = z_signal - avg(z_signal). This helps deal with z-axis being shifted up due to gravity] [Y/N]? ")
+    shift_z = get_input_yes_no(
+        "Shift Z-axis down [z_signal will be z_signal = z_signal - avg(z_signal). This helps deal with z-axis being shifted up due to gravity] [Y/N]? "
+    )
     show_spectogram = get_input_yes_no("Do you want to plot a spectogram? [Y/N]: ")
 
     df = dataframe
@@ -282,22 +304,24 @@ def plot_data(dataframe, filename):
     plt.show()
     return df
 
+
 if __name__ == "__main__":
     try:
         while True:
+
             def validator(inpt):
                 try:
                     inpt = int(inpt)
-                except ValueError():
+                except ValueError:
                     print("\rInvalid Option. Record new data (1) or analyze pre-existing data (2)? ")
                     return False
                 if inpt == 1 or inpt == 2:
-                    return True 
-            analyze = get_input()
+                    return True
+
+            analyze = int(get_input("Record new data [1] or analyze existing data [2]? ", validator))
             if analyze == 1:
                 record_data()
             elif analyze == 2:
                 analyze_data()
     except KeyboardInterrupt:
         exit(0)
-
