@@ -87,7 +87,7 @@ def train_and_save_svm(data):
         joblib.dump(model, file)
 
 
-def load_svm_from_file(file_path="./motion_classifier.pkl"):
+def load_svm_from_file(file_path="./motion_classifier.mdl"):
     with open(file_path, "rb") as file:
         return joblib.load(file)
 
