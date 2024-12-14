@@ -47,7 +47,6 @@ def data_reader():
 
     ser.close()
 
-
 def drone_controller():
     global data, run, end, buffer_full, SAMPLES_PER_WINDOW, VALUES_DTYPE, VALUES_PER_SAMPLE, MOVEMENT_THRESHOLD
 
@@ -55,6 +54,9 @@ def drone_controller():
     movement_window_start = 0
     movement_in_progress = False
     
+    position_bounds = [1,1,1] # Max distance from center in x,y,z axes
+    curr_position = [0,0,-1] # Current x,y,z coordinates within the space, center of the bottom surface of the bounding box
+
     classifier = load_svm_from_file()
 
     while not buffer_full and run:
@@ -125,7 +127,33 @@ def drone_controller():
         window_data = window_data.reshape(-1, 6)
         normalized_window_data = (window_data - window_data.min(axis=0)) / (window_data.max(axis=0) - window_data.min(axis=0))
         motion = classifier.predict([normalized_window_data.flatten()])[0]
+
         print(motion)
+
+        curr_position_copy = curr_position.copy()
+        send_command = True
+
+        match motion:
+            case 'left' | 'right':
+                curr_position_copy[0] = curr_position_copy[0] - 0.2 if motion == "left" else curr_position_copy[0] + 0.2
+            case 'forward' | 'backward':
+                curr_position_copy[1] = curr_position_copy[1] - 0.2 if motion == "backward" else curr_position_copy[1] + 0.2
+            case 'up' | 'down':
+                curr_position_copy[2] = curr_position_copy[2] - 0.2 if motion == "down" else curr_position_copy[2] + 0.2
+            case _:
+                pass
+
+        for curr_axis_pos, curr_axis_bounds in zip(curr_position_copy, position_bounds):
+            if abs(curr_axis_pos) > curr_axis_bounds:
+                send_command = False
+
+        print(curr_position)
+        if not send_command:
+            print('Out of range')
+        else:
+            curr_position = curr_position_copy.copy()
+            print(motion)
+            sleep(2)
 
 
 if __name__ == "__main__":
