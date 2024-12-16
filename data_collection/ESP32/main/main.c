@@ -88,24 +88,11 @@ void app_main(void)
 
     while(true)
     {
-        vTaskDelay(50 / portTICK_PERIOD_MS); // appease watchdog
-        const uart_port_t uart_num = UART_PORT;
-        size_t length = 0;
-        ESP_ERROR_CHECK(uart_get_buffered_data_len(uart_num, &length));
-        
-        if(length == 0) continue;
-        uart_flush_input(uart_num);
-        
-        printf("y\n");
-
-        while(true)
-        {
-            unsigned long t = esp_timer_get_time();
-            struct sample s;
-            mpu6050_get_acce(imu, (mpu6050_acce_value_t*) &s);
-            mpu6050_get_gyro(imu, (mpu6050_gyro_value_t*) &s.g_x);
-            printf("%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n", s.a_x, s.a_y, s.a_z, s.g_x, s.g_y, s.g_z);
-            while(esp_timer_get_time() - t < 4000); 
-        }
+        unsigned long t = esp_timer_get_time();
+        struct sample s;
+        mpu6050_get_acce(imu, (mpu6050_acce_value_t*) &s);
+        mpu6050_get_gyro(imu, (mpu6050_gyro_value_t*) &s.g_x);
+        printf("%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n", s.a_x, s.a_y, s.a_z, s.g_x, s.g_y, s.g_z);
+        while(esp_timer_get_time() - t < 4000); 
     }
 }

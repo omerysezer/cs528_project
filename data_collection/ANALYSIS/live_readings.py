@@ -1,23 +1,25 @@
 import threading
 import serial
 import numpy as np
-from time import sleep
+from time import sleep, time
 from svm import load_svm_from_file
+import socket
 
-SAMPLES_PER_WINDOW = 500
-VALUES_PER_SAMPLE = 6
+NUM_SAMPLES_PER_WINDOW = 500
+NUM_VALUES_PER_SAMPLE = 6
+NUM_VALUES_PER_WINDOW = NUM_SAMPLES_PER_WINDOW * NUM_VALUES_PER_SAMPLE
 VALUES_DTYPE = np.float32
-MOVEMENT_THRESHOLD = 17
+MOVEMENT_THRESHOLD = 20
 
 run = False
 
-data = np.zeros(SAMPLES_PER_WINDOW * VALUES_PER_SAMPLE * 10, dtype=VALUES_DTYPE)
+data = np.zeros(NUM_VALUES_PER_WINDOW * 10, dtype=VALUES_DTYPE)
 end = 0
 buffer_full = False
 
 
 def data_reader():
-    global data, run, end, buffer_full, SAMPLES_PER_WINDOW, VALUES_DTYPE, VALUES_PER_SAMPLE
+    global data, run, end, buffer_full, NUM_SAMPLES_PER_WINDOW, VALUES_DTYPE, NUM_VALUES_PER_SAMPLE, NUM_SAMPLES_PER_WINDOW
 
     ser = serial.Serial(port="com12", baudrate=115200)
     ser.set_output_flow_control(False)
@@ -29,6 +31,7 @@ def data_reader():
     ser.reset_input_buffer()
 
     while run:
+        sleep(0.001)
         line = ser.readline().decode("ascii").strip()
 
         try:
@@ -40,30 +43,43 @@ def data_reader():
         if len(values) != 6:
             continue
 
-        data[end : end + VALUES_PER_SAMPLE] = values
-        end = (end + VALUES_PER_SAMPLE) % len(data)
-        if end >= SAMPLES_PER_WINDOW * VALUES_PER_SAMPLE:
+        data[end : end + NUM_VALUES_PER_SAMPLE] = values
+        end = (end + NUM_VALUES_PER_SAMPLE) % len(data)
+        if end >= NUM_VALUES_PER_WINDOW:
             buffer_full = True
 
     ser.close()
 
 def drone_controller():
-    global data, run, end, buffer_full, SAMPLES_PER_WINDOW, VALUES_DTYPE, VALUES_PER_SAMPLE, MOVEMENT_THRESHOLD
+    global data, run, end, buffer_full, NUM_SAMPLES_PER_WINDOW, VALUES_DTYPE, NUM_VALUES_PER_SAMPLE, MOVEMENT_THRESHOLD, NUM_VALUES_PER_WINDOW
 
     # DEFINE VARIABLES
     movement_window_start = 0
     movement_in_progress = False
-    
-    position_bounds = [1,1,1] # Max distance from center in x,y,z axes
-    curr_position = [0,0,-1] # Current x,y,z coordinates within the space, center of the bottom surface of the bounding box
 
-    classifier = load_svm_from_file()
+    position_bounds = [1, 1, 1]  # Max distance from center in x,y,z axes
+    # Current x,y,z coordinates within the space, center of the bottom surface of the bounding box
+    curr_position = [0, 0, -1]
+
+    classifier_svm = load_svm_from_file()
+
+    ignore_motion = False
+
+    host = ""
+    port = 9000
+    locaddr = (host, port)
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.settimeout(1)
+    tello_address = ("192.168.10.1", 8889)
+    sock.bind(locaddr)
+
+    sock.sendto("command".encode("utf-8"), tello_address)
 
     while not buffer_full and run:
-        print("filling")
-        sleep(0.01)
+        print("Preparing drone...")
+        sleep(1)
 
-    print("Ready")
+    print("Ready To Control Drone!")
     while run:
         sleep(0.1)
         curr_window_end = end
@@ -81,13 +97,13 @@ def drone_controller():
         if movement_started:
             movement_in_progress = True
             movement_window_start = curr_window_end
-            print("Movement")
+            print("MOvement Detected")
             continue
         # trick to avoid indenting for movement_ended case
         elif not movement_ended:
             continue
-        
-        print("No movement")
+
+        print("Movement ended")
         # This section only runs if movement_ended is True
         movement_in_progress = False
 
@@ -105,55 +121,122 @@ def drone_controller():
             curr_window_end = end
             curr_window_end_looped_around = curr_window_end < movement_window_midpoint
             if not curr_window_end_looped_around and curr_window_end - movement_window_midpoint > (
-                VALUES_PER_SAMPLE * SAMPLES_PER_WINDOW // 2
+                NUM_VALUES_PER_WINDOW // 2
             ):
                 break
             if curr_window_end_looped_around and len(data) - movement_window_midpoint + end > (
-                VALUES_PER_SAMPLE * SAMPLES_PER_WINDOW // 2
+                NUM_VALUES_PER_WINDOW // 2
             ):
                 break
-        
+
         curr_window_end = end
-        if curr_window_end - (VALUES_PER_SAMPLE * SAMPLES_PER_WINDOW) < 0:
+        if curr_window_end - NUM_VALUES_PER_WINDOW < 0:
             window_data = np.concatenate(
-                (data[curr_window_end - (VALUES_PER_SAMPLE * SAMPLES_PER_WINDOW) :], data[: curr_window_end])
+                (
+                    data[curr_window_end - NUM_VALUES_PER_WINDOW :],
+                    data[:curr_window_end],
+                )
             )
-            print(window_data.shape, 'a')
         else:
-            window_data = data[curr_window_end - (VALUES_PER_SAMPLE * SAMPLES_PER_WINDOW) : curr_window_end]
-            print(window_data.shape, curr_window_end, 'b')
+            window_data = data[curr_window_end - NUM_VALUES_PER_WINDOW : curr_window_end]
 
         # reshape into 6 columns acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z
         window_data = window_data.reshape(-1, 6)
-        normalized_window_data = (window_data - window_data.min(axis=0)) / (window_data.max(axis=0) - window_data.min(axis=0))
-        motion = classifier.predict([normalized_window_data.flatten()])[0]
+        normalized_window_data = (window_data - window_data.min(axis=0)) / (
+            window_data.max(axis=0) - window_data.min(axis=0)
+        )
 
-        print(motion)
+        motion = classifier_svm.predict([normalized_window_data.flatten()])[0].strip()
+        print(f"Detected: {motion}")
 
-        curr_position_copy = curr_position.copy()
-        send_command = True
+        if ignore_motion:  # treat every other motion as a return to base stance, ignore them
+            ignore_motion = False
+            print("Motion ignored")
+            sleep(2)
+            print("ready")
+            continue
 
+        # ignore motion is meant to allow users to return hand to steady state
+        # flip motions already return hand to steady state, so no need to ignore
+        # motions after a flip 
+        if motion not in ["rflip", "lflip"]:
+            ignore_motion = True
+
+        if motion == "nm":
+            sleep(2)
+            print("ready")
+            continue
+
+        updated_position = curr_position.copy()
+        out_of_bounds = False
         match motion:
-            case 'left' | 'right':
-                curr_position_copy[0] = curr_position_copy[0] - 0.2 if motion == "left" else curr_position_copy[0] + 0.2
-            case 'forward' | 'backward':
-                curr_position_copy[1] = curr_position_copy[1] - 0.2 if motion == "backward" else curr_position_copy[1] + 0.2
-            case 'up' | 'down':
-                curr_position_copy[2] = curr_position_copy[2] - 0.2 if motion == "down" else curr_position_copy[2] + 0.2
+            case "left" | "right":
+                updated_position[0] += -0.2 if motion == "left" else 0.2
+            case "forward" | "backward":
+                updated_position[1] += -0.2 if motion == "backward" else 0.2
+            case "up" | "down":
+                updated_position[2] += -0.2 if motion == "down" else 0.2
             case _:
                 pass
 
-        for curr_axis_pos, curr_axis_bounds in zip(curr_position_copy, position_bounds):
+        print(f"Original Pos: {curr_position}")
+        print(f"New Computed Pos: {updated_position}")
+        for curr_axis_pos, curr_axis_bounds in zip(updated_position, position_bounds):
             if abs(curr_axis_pos) > curr_axis_bounds:
-                send_command = False
+                out_of_bounds = True
+              
+        print("out of bounds: ", out_of_bounds)
 
-        print(curr_position)
-        if not send_command:
-            print('Out of range')
-        else:
-            curr_position = curr_position_copy.copy()
-            print(motion)
+        if out_of_bounds:
+            print("Out of bounds")
             sleep(2)
+            continue
+
+        drone_command = motion
+        print("Drone Command: ", drone_command)
+        if drone_command == "lflip":
+            drone_command = "flip l"
+        elif drone_command == "rflip":
+            drone_command = "flip r"
+        elif drone_command == "backward":
+            drone_command = "back"
+
+        print("Massaged Drone Command: ", drone_command)
+        # add min travel distance to commands that need it
+        if drone_command in ["up", "down", "left", "right", "forward", "back"]:
+            drone_command += " 50"
+        print("Drone Command With Dist: ", drone_command)
+
+        # HANDLE SPECIAL MOVEMENT CASES
+        is_landed = curr_position[2] == -position_bounds[2]
+        is_landing = not is_landed and updated_position[2] == -1 * position_bounds[2]
+        if is_landed and motion == "up":
+            print("Sending: ", drone_command)
+            sock.sendto(drone_command.encode("utf-8"), tello_address)
+            drone_command = "takeoff"
+        elif is_landed and motion != "up":
+            print("pull up!")
+            continue
+        elif is_landing:
+            print("Sending: ", drone_command)
+            sock.sendto(drone_command.encode("utf-8"), tello_address)
+            drone_command = "land"
+
+        print("Sending: ", drone_command)
+        sock.sendto(drone_command.encode("utf-8"), tello_address)
+        try:
+            d, server = sock.recvfrom(1518)
+            print(d.decode(encoding="utf-8"))
+        except:
+            print("err response")
+
+        curr_position = updated_position.copy()
+
+        print("\n\n\n\n")
+        sleep(2)
+        print('ready')
+
+    sock.sendto("emergency".encode("utf-8"), tello_address)
 
 
 if __name__ == "__main__":
