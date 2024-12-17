@@ -78,9 +78,7 @@ struct sample
     float g_x;
     float g_y;
     float g_z;
-    unsigned long time;
 };
-struct sample samples[NUM_SAMPLES] = {};
 
 void app_main(void)
 {
@@ -90,36 +88,11 @@ void app_main(void)
 
     while(true)
     {
-        vTaskDelay(50 / portTICK_PERIOD_MS); // appease watchdog
-        const uart_port_t uart_num = UART_PORT;
-        size_t length = 0;
-        ESP_ERROR_CHECK(uart_get_buffered_data_len(uart_num, &length));
-        
-        if(length == 0) continue;
-        uart_flush_input(uart_num);
-        
-        printf("y\n");
-
-        long long int h = esp_timer_get_time();
-        for(int i = 0; i < NUM_SAMPLES; i++)
-        {   
-            samples[i].time = (unsigned long)esp_timer_get_time();
-            mpu6050_get_acce(imu, (mpu6050_acce_value_t*) &samples[i]);
-            mpu6050_get_gyro(imu, (mpu6050_gyro_value_t*) &samples[i].g_x);
-            unsigned long t = esp_timer_get_time();
-            while(esp_timer_get_time() - t < 2725); // takes about .8 ms to get data from IMU
-        }
-        
-        printf("acc_x,acc_y,acc_z,gyro_x,gyro_y,gyro_z,time\n");
-        
-        unsigned long initial_timestamp = samples[0].time;
-        for(int i = 0; i < NUM_SAMPLES; i++)
-        {
-            struct sample s = samples[i];
-            printf("%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%lu\n", s.a_x, s.a_y, s.a_z, s.g_x, s.g_y, s.g_z, s.time - initial_timestamp);
-            vTaskDelay(1 / portTICK_PERIOD_MS);
-        }
-        
-        printf("$\n"); // end of transmission character
+        unsigned long t = esp_timer_get_time();
+        struct sample s;
+        mpu6050_get_acce(imu, (mpu6050_acce_value_t*) &s);
+        mpu6050_get_gyro(imu, (mpu6050_gyro_value_t*) &s.g_x);
+        printf("%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n", s.a_x, s.a_y, s.a_z, s.g_x, s.g_y, s.g_z);
+        while(esp_timer_get_time() - t < 4000); 
     }
 }
